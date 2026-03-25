@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "skillbubble": {
+      "url": "https://mcp.skillbubble.com/mcp",
+      "type": "streamableHttp",
+      "headers": {
+        "Authorization": "sk-sb-your-api-key-here"
+      }
+    }
+  }
+}

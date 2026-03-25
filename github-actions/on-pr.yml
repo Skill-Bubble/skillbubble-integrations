@@ -1,0 +1,60 @@
+# .github/workflows/skillbubble-pr.yml
+#
+# Suggest skills based on what a pull request changes.
+# Runs on PR open/update — suggestions land in your SkillBubble inbox for review.
+#
+# ⚠️  PERSONAL USE ONLY — do not add this to a shared team repository.
+#     The API key is tied to one person's profile. Use GitHub Sync instead
+#     for automatic updates based on your personal contribution history.
+#
+# Setup: same secrets as on-merge.yml
+#   SKILLBUBBLE_API_KEY + SKILLBUBBLE_MCP_ENDPOINT
+
+name: Suggest skills from PR
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  suggest-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build PR context
+        id: ctx
+        env:
+          # Pass PR title via env var to avoid shell injection from untrusted input
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Files changed in this PR
+          CHANGED=$(git diff "origin/$BASE_REF"...HEAD --name-only | head -30 | tr '\n' ', ')
+
+          # Commit messages in this PR
+          COMMITS=$(git log "origin/$BASE_REF"..HEAD --oneline | tr '\n' '; ')
+
+          CONTEXT="PR: $PR_TITLE | Changed files: $CHANGED | Commits: $COMMITS"
+          # Truncate to 2000 chars
+          CONTEXT="${CONTEXT:0:2000}"
+          echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+
+      - name: Suggest skills from PR
+        env:
+          CONTEXT: ${{ steps.ctx.outputs.context }}
+          MCP_ENDPOINT: ${{ secrets.SKILLBUBBLE_MCP_ENDPOINT }}
+          API_KEY: ${{ secrets.SKILLBUBBLE_API_KEY }}
+        run: |
+          PAYLOAD=$(jq -n --arg ctx "$CONTEXT" \
+            '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"suggestSkills",arguments:{context:$ctx}}}')
+
+          curl -s -X POST "$MCP_ENDPOINT" \
+            -H "Authorization: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

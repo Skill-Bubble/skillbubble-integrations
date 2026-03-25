@@ -1,0 +1,90 @@
+# .github/workflows/skillbubble.yml
+#
+# Automatically update your SkillBubble skill profile on every merge to main.
+#
+# ⚠️  PERSONAL USE ONLY — do not add this to a shared team repository.
+#     The API key in SKILLBUBBLE_API_KEY is tied to one person's profile.
+#     Every push by every team member will trigger suggestions against that
+#     one person's profile. For automatic updates in a shared repo, use
+#     GitHub Sync in Settings → Integrations instead.
+#
+# Setup (one time):
+#   1. Go to your repo → Settings → Secrets and variables → Actions
+#   2. Add secret: SKILLBUBBLE_API_KEY
+#      Generate one at: https://www.skillbubble.com/settings/integrations
+#   3. Add secret: SKILLBUBBLE_MCP_ENDPOINT
+#      Copy from: https://www.skillbubble.com/settings/integrations
+#   4. Save this file as .github/workflows/skillbubble.yml
+
+name: Update SkillBubble on merge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  suggest-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for git diff
+
+      # Build context from what changed in this push
+      - name: Build skill context
+        id: ctx
+        run: |
+          # Files changed in this push
+          CHANGED=$(git diff HEAD~1 --name-only | head -30 | tr '\n' ', ')
+
+          # Dependencies (Node — adapt for your stack)
+          DEPS=""
+          if [ -f package.json ]; then
+            DEPS=$(cat package.json | jq -r '
+              (.dependencies // {}) + (.devDependencies // {}) | keys | join(", ")
+            ' 2>/dev/null || echo "")
+          fi
+
+          # Commit messages from this push
+          COMMITS=$(git log HEAD~3..HEAD --oneline | tr '\n' '; ')
+
+          CONTEXT="Changed files: $CHANGED | Dependencies: $DEPS | Recent commits: $COMMITS"
+          # Truncate to 2000 chars
+          CONTEXT="${CONTEXT:0:2000}"
+          echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+
+      # Call suggestSkills — read-only, returns ideas only
+      - name: Suggest skills
+        env:
+          CONTEXT: ${{ steps.ctx.outputs.context }}
+          MCP_ENDPOINT: ${{ secrets.SKILLBUBBLE_MCP_ENDPOINT }}
+          API_KEY: ${{ secrets.SKILLBUBBLE_API_KEY }}
+        run: |
+          PAYLOAD=$(jq -n --arg ctx "$CONTEXT" \
+            '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"suggestSkills",arguments:{context:$ctx}}}')
+
+          RESPONSE=$(curl -s -X POST "$MCP_ENDPOINT" \
+            -H "Authorization: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          echo "Suggestions: $RESPONSE"
+
+      # createSkillRating sends to your inbox for review (ask mode)
+      # or applies directly if you have auto_accept enabled in Settings
+      - name: Rate top skills
+        env:
+          MCP_ENDPOINT: ${{ secrets.SKILLBUBBLE_MCP_ENDPOINT }}
+          API_KEY: ${{ secrets.SKILLBUBBLE_API_KEY }}
+        run: |
+          for SKILL in "TypeScript" "React" "AWS Lambda"; do
+            PAYLOAD=$(jq -n --arg name "$SKILL" \
+              '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"createSkillRating",arguments:{skillName:$name,rating:4}}}')
+
+            curl -s -X POST "$MCP_ENDPOINT" \
+              -H "Authorization: $API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD"
+          done

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "skillbubble": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.skillbubble.com/mcp",
+        "--header",
+        "Authorization:sk-sb-your-api-key-here"
+      ]
+    }
+  }
+}

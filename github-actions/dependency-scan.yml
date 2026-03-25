@@ -1,0 +1,79 @@
+# .github/workflows/skillbubble-deps.yml
+#
+# Suggest skills based on your project's dependencies.
+# Useful for onboarding — run once to seed your profile from what's already in your stack.
+#
+# ⚠️  PERSONAL USE ONLY — do not add this to a shared team repository.
+#     The API key is tied to one person's profile. Use GitHub Sync instead
+#     for automatic updates based on your personal contribution history.
+#
+# Supports: package.json (Node), requirements.txt (Python), go.mod (Go), Cargo.toml (Rust)
+#
+# Setup: same secrets as on-merge.yml
+#   SKILLBUBBLE_API_KEY + SKILLBUBBLE_MCP_ENDPOINT
+
+name: Suggest skills from dependencies
+
+on:
+  workflow_dispatch:  # run manually from the Actions tab
+  push:
+    paths:
+      - 'package.json'
+      - 'requirements.txt'
+      - 'go.mod'
+      - 'Cargo.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  suggest-from-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dependency context
+        id: ctx
+        run: |
+          DEPS=""
+
+          # Node
+          if [ -f package.json ]; then
+            DEPS=$(cat package.json | jq -r '
+              (.dependencies // {}) + (.devDependencies // {}) | keys | join(", ")
+            ' 2>/dev/null || echo "")
+          fi
+
+          # Python
+          if [ -f requirements.txt ]; then
+            DEPS="$DEPS $(cat requirements.txt | grep -v '^#' | cut -d'=' -f1 | tr '\n' ', ')"
+          fi
+
+          # Go
+          if [ -f go.mod ]; then
+            DEPS="$DEPS $(grep '^require' -A 100 go.mod | grep -v '^require\|^)' | awk '{print $1}' | tr '\n' ', ')"
+          fi
+
+          # Rust
+          if [ -f Cargo.toml ]; then
+            DEPS="$DEPS $(grep -A 100 '^\[dependencies\]' Cargo.toml | grep -v '^\[' | cut -d'=' -f1 | tr '\n' ', ')"
+          fi
+
+          CONTEXT="Project dependencies: $DEPS"
+          # Truncate to 2000 chars
+          CONTEXT="${CONTEXT:0:2000}"
+          echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+
+      - name: Suggest skills from dependencies
+        env:
+          CONTEXT: ${{ steps.ctx.outputs.context }}
+          MCP_ENDPOINT: ${{ secrets.SKILLBUBBLE_MCP_ENDPOINT }}
+          API_KEY: ${{ secrets.SKILLBUBBLE_API_KEY }}
+        run: |
+          PAYLOAD=$(jq -n --arg ctx "$CONTEXT" \
+            '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"suggestSkills",arguments:{context:$ctx}}}')
+
+          curl -s -X POST "$MCP_ENDPOINT" \
+            -H "Authorization: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

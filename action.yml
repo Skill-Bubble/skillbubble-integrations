@@ -1,0 +1,98 @@
+name: 'SkillBubble Skills Update'
+description: 'Automatically update your SkillBubble skill profile from your git activity'
+author: 'Skill-Bubble'
+
+branding:
+  icon: 'award'
+  color: 'blue'
+
+inputs:
+  api_key:
+    description: 'Your SkillBubble API key (generate in Settings → Integrations)'
+    required: true
+  mcp_endpoint:
+    description: 'SkillBubble MCP endpoint URL (copy from Settings → Integrations)'
+    required: true
+  context:
+    description: 'Custom context string for skill suggestions. If omitted, auto-detected from git diff.'
+    required: false
+    default: ''
+  auto_rate:
+    description: 'Comma-separated list of skill names to rate automatically (e.g. "TypeScript,React"). If omitted, only suggestions are generated.'
+    required: false
+    default: ''
+  rating:
+    description: 'Rating to apply when auto_rate is set (1–5)'
+    required: false
+    default: '4'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build context from git
+      id: ctx
+      shell: bash
+      run: |
+        if [ -n "$INPUT_CONTEXT" ]; then
+          CONTEXT="$INPUT_CONTEXT"
+        else
+          CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null | head -30 | tr '\n' ', ' || echo "")
+          COMMITS=$(git log HEAD~3..HEAD --oneline 2>/dev/null | tr '\n' '; ' || echo "")
+          DEPS=""
+          if [ -f package.json ]; then
+            DEPS=$(cat package.json | python3 -c "
+        import json,sys
+        d=json.load(sys.stdin)
+        keys=list((d.get('dependencies',{})|d.get('devDependencies',{})).keys())
+        print(', '.join(keys[:20]))
+        " 2>/dev/null || echo "")
+          fi
+          CONTEXT="Changed files: $CHANGED | Commits: $COMMITS | Dependencies: $DEPS"
+        fi
+        # Truncate to 2000 chars to prevent oversized payloads
+        CONTEXT="${CONTEXT:0:2000}"
+        echo "context=$CONTEXT" >> $GITHUB_OUTPUT
+      env:
+        INPUT_CONTEXT: ${{ inputs.context }}
+
+    - name: Suggest skills
+      shell: bash
+      run: |
+        # Use jq to safely build JSON payload (prevents injection via context string)
+        PAYLOAD=$(jq -n \
+          --arg ctx "$CONTEXT" \
+          '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"suggestSkills",arguments:{context:$ctx}}}')
+
+        curl -s -X POST "$MCP_ENDPOINT" \
+          -H "Authorization: $API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" \
+          | python3 -c "import json,sys; d=json.load(sys.stdin); [print(s.get('name',''),'—',s.get('reason','')) for s in d.get('result',{}).get('content',[{}])[0].get('suggestions',[])]" 2>/dev/null || true
+      env:
+        CONTEXT: ${{ steps.ctx.outputs.context }}
+        MCP_ENDPOINT: ${{ inputs.mcp_endpoint }}
+        API_KEY: ${{ inputs.api_key }}
+
+    - name: Rate skills
+      if: inputs.auto_rate != ''
+      shell: bash
+      run: |
+        IFS=',' read -ra SKILLS <<< "$AUTO_RATE"
+        for SKILL in "${SKILLS[@]}"; do
+          SKILL=$(echo "$SKILL" | xargs)
+          PAYLOAD=$(jq -n \
+            --arg name "$SKILL" \
+            --argjson rating "$RATING" \
+            '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"createSkillRating",arguments:{skillName:$name,rating:$rating}}}')
+
+          curl -s -X POST "$MCP_ENDPOINT" \
+            -H "Authorization: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" > /dev/null
+          echo "Rated: $SKILL ($RATING/5)"
+        done
+      env:
+        AUTO_RATE: ${{ inputs.auto_rate }}
+        RATING: ${{ inputs.rating }}
+        MCP_ENDPOINT: ${{ inputs.mcp_endpoint }}
+        API_KEY: ${{ inputs.api_key }}
