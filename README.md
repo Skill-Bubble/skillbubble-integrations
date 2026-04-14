@@ -117,6 +117,20 @@ Call getSkillProfile, then run git log --oneline -20.
 Compare what I've been building against my profile and suggest updates for anything I'm missing.
 ```
 
+**Career planning**
+```
+How ready am I for a Senior Cloud Architect role? Use roleGapAnalysis.
+```
+
+```
+Generate a 30/60/90-day learning plan to close my gaps against my AWS package.
+```
+
+```
+What are the top 3 skills I should focus on to become a Staff Engineer?
+Use prioritySkillRecommendations with that career goal.
+```
+
 ---
 
 ## Available tools
@@ -128,14 +142,22 @@ Compare what I've been building against my profile and suggest updates for anyth
 | `getFrameworks` | Free | View competency frameworks and progress |
 | `getSkillHistory` | Free | See rating changes over time |
 | `searchSkills` | Free | Search by name or category |
+| `getSubscribedPackages` | Free | List all subscribed skill packages with categories and skills |
+| `gapAnalysis` | Free | Compare your skills against a package to find gaps and strengths |
+| `strengthsWeaknesses` | Free | Show your top 3 strongest and weakest skill categories |
+| `frameworkGapAnalysis` | Free | Compare your evidence against a competency framework |
 | `createSkillRating` | Pro | Add or update a skill rating |
 | `updateSkillRating` | Pro | Update an existing rating by skill key |
 | `createCertification` | Pro | Add a certification record |
 | `createSkillPackage` | Pro | Create a custom skill package |
+| `manageSuggestions` | Pro | List, accept, or reject pending skill suggestions |
 | `suggestSkills` | Pro | AI-powered skill suggestions from a context string — non-destructive |
 | `suggestSkillPackage` | Pro | Suggest a skill package from a goal — non-destructive |
+| `roleGapAnalysis` | Pro | Analyse your readiness for a target role using AI |
+| `generateLearningPlan` | Pro | Generate a 30/60/90-day learning plan based on your skill gaps |
+| `prioritySkillRecommendations` | Pro | Get the top 3 skills to improve next for your career goal |
 
-> `suggestSkills` and `suggestSkillPackage` return recommendations only — they never modify your profile automatically.
+> AI-powered tools (`suggestSkills`, `suggestSkillPackage`, `roleGapAnalysis`, `generateLearningPlan`, `prioritySkillRecommendations`) return recommendations only — they never modify your profile automatically.
 
 ---
 
